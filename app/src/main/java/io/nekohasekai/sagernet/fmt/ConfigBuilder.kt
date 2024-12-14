@@ -22,6 +22,7 @@ import io.nekohasekai.sagernet.fmt.direct.buildSingBoxOutboundDirectBean
 import io.nekohasekai.sagernet.fmt.hysteria.HysteriaBean
 import io.nekohasekai.sagernet.fmt.hysteria.buildSingBoxOutboundHysteriaBean
 import io.nekohasekai.sagernet.fmt.internal.ChainBean
+import io.nekohasekai.sagernet.fmt.juicity.JuicityBean
 import io.nekohasekai.sagernet.fmt.shadowsocks.ShadowsocksBean
 import io.nekohasekai.sagernet.fmt.shadowsocks.buildSingBoxOutboundShadowsocksBean
 import io.nekohasekai.sagernet.fmt.socks.SOCKSBean
@@ -201,6 +202,8 @@ fun buildConfig(
     val needSniffOverride = DataStore.trafficSniffing == SniffPolicy.OVERRIDE // TODO re-add
     val externalIndexMap = ArrayList<IndexEntity>()
     val ipv6Mode = if (forTest) IPv6Mode.ENABLE else DataStore.ipv6Mode
+    // TODO: Migrate IPv6 strategy to resolve
+    var needResolve = false
 
     fun genDomainStrategy(noAsIs: Boolean): String {
         return when {
@@ -556,6 +559,9 @@ fun buildConfig(
                             })
                         }
                     })
+
+                    // https://github.com/juicity/juicity/issues/140
+                    if (!needResolve && bean is JuicityBean) needResolve = useFakeDns
                 }
 
                 outbounds.add(currentOutbound)
@@ -934,12 +940,15 @@ fun buildConfig(
                 })
             }
 
-            if (needSniff) {
-                route.rules.add(0, Rule_Default().apply {
+            if (needSniff) route.rules.add(0, Rule_Default().apply {
                     action = SingBoxOptions.ACTION_SNIFF
                     if (DataStore.sniffTimeout.isNotBlank()) timeout = DataStore.sniffTimeout
                 })
-            }
+            if (needResolve) route.rules.add(0, Rule_Default().apply {
+                action = SingBoxOptions.ACTION_RESOLVE
+                network = listOf("udp")
+                strategy = genDomainStrategy(true)
+            })
         }
         if (!forTest) dns.final_ = TAG_DNS_REMOTE
 
